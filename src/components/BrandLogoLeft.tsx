@@ -6,7 +6,9 @@ export const BrandLogoLeft = () => {
 
   if (!logos) {
     return (
-      <h1 className="text-xl font-bold text-black ml-2">OnlineStore</h1>
+      <h1 className="text-xl font-light text-foreground tracking-tight">
+        Pet <span className="font-semibold">Wellness</span>
+      </h1>
     )
   }
 
@@ -14,16 +16,18 @@ export const BrandLogoLeft = () => {
 
   if (!mainLogoUrl) {
     return (
-      <h1 className="text-xl font-bold text-black ml-2">OnlineStore</h1>
+      <h1 className="text-xl font-light text-foreground tracking-tight">
+        Pet <span className="font-semibold">Wellness</span>
+      </h1>
     )
   }
 
   return (
-    <a href="/" aria-label="Home" className="ml-2">
+    <a href="/" aria-label="Home">
       <img 
         src={mainLogoUrl} 
         alt="Main logo"
-        className="h-8 w-auto object-contain" 
+        className="h-9 w-auto object-contain" 
       />
     </a>
   )

@@ -26,7 +26,7 @@ export const SocialLinks = () => {
   }
 
   return (
-    <div className="flex space-x-4">
+    <div className="flex space-x-3">
       {validLinks.map((link, index) => (
         <a
           key={index}
@@ -35,12 +35,12 @@ export const SocialLinks = () => {
           rel="noopener noreferrer"
           aria-label={`Follow us on ${link.icon.label}`}
           title={`Follow us on ${link.icon.label}`}
-          className="opacity-70 hover:opacity-100 transition-opacity duration-200 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-white/50 rounded p-1"
+          className="opacity-70 hover:opacity-100 transition-all duration-200 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-primary-foreground/20 rounded p-1.5 hover:bg-primary-foreground/10"
         >
           <img
             src={link.icon.src}
             alt={link.icon.label}
-            className="h-5 w-5 filter brightness-0 invert"
+            className="h-5 w-5 filter brightness-0 invert opacity-80"
           />
         </a>
       ))}
