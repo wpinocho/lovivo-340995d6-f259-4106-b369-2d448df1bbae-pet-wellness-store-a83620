@@ -1,3 +1,70 @@
+// Agregar al inicio del bridge
+let isVisualEditActive = false;
+let eventListenersAttached = false;
+
+// Prevenir todos los clicks cuando Visual Edit está activo
+function preventDefaultBehavior(event) {
+  if (isVisualEditActive) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+  }
+}
+
+// Activar modo Visual Edit
+function activateVisualEditMode() {
+  if (eventListenersAttached) return;
+  
+  isVisualEditActive = true;
+  
+  // Prevenir clicks en toda la página
+  document.addEventListener('click', preventDefaultBehavior, true);
+  document.addEventListener('mousedown', preventDefaultBehavior, true);
+  document.addEventListener('mouseup', preventDefaultBehavior, true);
+  
+  // Prevenir navegación
+  document.addEventListener('submit', preventDefaultBehavior, true);
+  
+  // Prevenir drag and drop
+  document.addEventListener('dragstart', preventDefaultBehavior, true);
+  
+  // Cambiar cursor
+  document.body.style.cursor = 'crosshair';
+  document.body.style.userSelect = 'none';
+  
+  eventListenersAttached = true;
+  console.log('🎨 Visual Edit Mode ACTIVATED - All interactions blocked');
+}
+
+// Desactivar modo Visual Edit
+function deactivateVisualEditMode() {
+  if (!eventListenersAttached) return;
+  
+  isVisualEditActive = false;
+  
+  document.removeEventListener('click', preventDefaultBehavior, true);
+  document.removeEventListener('mousedown', preventDefaultBehavior, true);
+  document.removeEventListener('mouseup', preventDefaultBehavior, true);
+  document.removeEventListener('submit', preventDefaultBehavior, true);
+  document.removeEventListener('dragstart', preventDefaultBehavior, true);
+  
+  document.body.style.cursor = '';
+  document.body.style.userSelect = '';
+  
+  eventListenersAttached = false;
+  console.log('🎨 Visual Edit Mode DEACTIVATED - Interactions restored');
+}
+
+// En el listener de mensajes, agregar:
+case 'VISUAL_EDIT_MODE_ACTIVATE':
+  activateVisualEditMode();
+  break;
+
+case 'VISUAL_EDIT_MODE_DEACTIVATE':
+  deactivateVisualEditMode();
+  clearHighlight();
+  break;
+
 // Visual Edit Bridge - Bidirectional communication
 (function() {
   console.log('🎨 Visual Edit Bridge initialized');
