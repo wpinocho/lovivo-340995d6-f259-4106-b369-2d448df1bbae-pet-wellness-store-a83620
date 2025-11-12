@@ -25,7 +25,10 @@
   function highlightElement(selector) {
     try {
       const element = document.querySelector(selector);
-      if (!element) return;
+      if (!element) {
+        console.warn('Element not found for highlighting:', selector);
+        return;
+      }
 
       const rect = element.getBoundingClientRect();
       const overlay = createHighlightOverlay();
@@ -53,35 +56,35 @@
     
     // Try ID first
     if (element.id) {
-      return `#${element.id}`;
+      return `#${CSS.escape(element.id)}`;
     }
 
-    // Build path from classes and position
+    // Build path using escaped classes
     const path = [];
-    while (element && element !== document.body) {
-      let selector = element.tagName.toLowerCase();
+    let current = element;
+    
+    while (current && current !== document.body) {
+      let selector = current.tagName.toLowerCase();
       
-      if (element.className && typeof element.className === 'string') {
-        const classes = element.className.trim().split(/\s+/).filter(c => c);
+      // Add escaped classes (limit to first 2 for brevity)
+      if (current.className && typeof current.className === 'string') {
+        const classes = current.className.trim().split(/\s+/).filter(c => c);
         if (classes.length > 0) {
-          selector += '.' + classes.slice(0, 3).join('.');
+          const escapedClasses = classes.slice(0, 2).map(c => CSS.escape(c)).join('.');
+          selector += '.' + escapedClasses;
         }
       }
 
-      // Add nth-child if needed for uniqueness
-      const parent = element.parentElement;
+      // Add nth-child for uniqueness
+      const parent = current.parentElement;
       if (parent) {
-        const siblings = Array.from(parent.children).filter(
-          child => child.tagName === element.tagName
-        );
-        if (siblings.length > 1) {
-          const index = siblings.indexOf(element) + 1;
-          selector += `:nth-child(${index})`;
-        }
+        const siblings = Array.from(parent.children);
+        const index = siblings.indexOf(current) + 1;
+        selector += `:nth-child(${index})`;
       }
 
       path.unshift(selector);
-      element = parent;
+      current = parent;
     }
 
     return path.join(' > ');
@@ -148,6 +151,18 @@
 
           const generatedSelector = generateSelector(element);
           console.log('[VisualEdit Bridge] Generated selector:', generatedSelector);
+
+          // Test if selector is valid
+          try {
+            document.querySelector(generatedSelector);
+          } catch (e) {
+            console.error('[VisualEdit Bridge] Generated invalid selector:', generatedSelector, e);
+            window.parent.postMessage({
+              type: 'NO_ELEMENT_DETECTED',
+              action
+            }, '*');
+            return;
+          }
 
           if (action === 'hover') {
             window.parent.postMessage({
