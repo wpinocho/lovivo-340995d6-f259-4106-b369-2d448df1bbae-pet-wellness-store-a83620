@@ -1,139 +1,39 @@
-// Agregar al inicio del bridge
-let isVisualEditActive = false;
-let eventListenersAttached = false;
+// ===== LOVIVO VISUAL EDIT BRIDGE =====
+// This script enables visual editing mode communication between Lovivo editor and store preview
 
-// Prevenir todos los clicks cuando Visual Edit está activo
-function preventDefaultBehavior(event) {
-  if (isVisualEditActive) {
-    event.preventDefault();
-    event.stopPropagation();
-    event.stopImmediatePropagation();
-  }
-}
-
-// Activar modo Visual Edit
-function activateVisualEditMode() {
-  if (eventListenersAttached) return;
-  
-  isVisualEditActive = true;
-  
-  // Prevenir clicks en toda la página
-  document.addEventListener('click', preventDefaultBehavior, true);
-  document.addEventListener('mousedown', preventDefaultBehavior, true);
-  document.addEventListener('mouseup', preventDefaultBehavior, true);
-  
-  // Prevenir navegación
-  document.addEventListener('submit', preventDefaultBehavior, true);
-  
-  // Prevenir drag and drop
-  document.addEventListener('dragstart', preventDefaultBehavior, true);
-  
-  // Cambiar cursor
-  document.body.style.cursor = 'crosshair';
-  document.body.style.userSelect = 'none';
-  
-  eventListenersAttached = true;
-  console.log('🎨 Visual Edit Mode ACTIVATED - All interactions blocked');
-}
-
-// Desactivar modo Visual Edit
-function deactivateVisualEditMode() {
-  if (!eventListenersAttached) return;
-  
-  isVisualEditActive = false;
-  
-  document.removeEventListener('click', preventDefaultBehavior, true);
-  document.removeEventListener('mousedown', preventDefaultBehavior, true);
-  document.removeEventListener('mouseup', preventDefaultBehavior, true);
-  document.removeEventListener('submit', preventDefaultBehavior, true);
-  document.removeEventListener('dragstart', preventDefaultBehavior, true);
-  
-  document.body.style.cursor = '';
-  document.body.style.userSelect = '';
-  
-  eventListenersAttached = false;
-  console.log('🎨 Visual Edit Mode DEACTIVATED - Interactions restored');
-}
-
-// En el listener de mensajes, agregar:
-case 'VISUAL_EDIT_MODE_ACTIVATE':
-  activateVisualEditMode();
-  break;
-
-case 'VISUAL_EDIT_MODE_DEACTIVATE':
-  deactivateVisualEditMode();
-  clearHighlight();
-  break;
-
-// Visual Edit Bridge - Bidirectional communication
 (function() {
   console.log('🎨 Visual Edit Bridge initialized');
 
+  // State management
+  let isVisualEditActive = false;
+  let eventListenersAttached = false;
   let highlightOverlay = null;
+  let currentHighlightedElement = null;
 
-  // Create highlight overlay element
-  function createHighlightOverlay() {
-    if (highlightOverlay) return highlightOverlay;
-    
-    highlightOverlay = document.createElement('div');
-    highlightOverlay.style.cssText = `
-      position: fixed;
-      pointer-events: none;
-      border: 2px solid #3b82f6;
-      background: rgba(59, 130, 246, 0.1);
-      z-index: 999999;
-      transition: all 0.15s ease;
-    `;
-    document.body.appendChild(highlightOverlay);
-    return highlightOverlay;
-  }
+  // ===== UTILITY FUNCTIONS =====
 
-  // Highlight element
-  function highlightElement(selector) {
-    try {
-      const element = document.querySelector(selector);
-      if (!element) {
-        console.warn('Element not found for highlighting:', selector);
-        return;
-      }
-
-      const rect = element.getBoundingClientRect();
-      const overlay = createHighlightOverlay();
-      
-      overlay.style.top = `${rect.top + window.scrollY}px`;
-      overlay.style.left = `${rect.left + window.scrollX}px`;
-      overlay.style.width = `${rect.width}px`;
-      overlay.style.height = `${rect.height}px`;
-      overlay.style.display = 'block';
-    } catch (error) {
-      console.error('Error highlighting element:', error);
-    }
-  }
-
-  // Clear highlight
-  function clearHighlight() {
-    if (highlightOverlay) {
-      highlightOverlay.style.display = 'none';
-    }
-  }
-
-  // Generate unique CSS selector for element
+  /**
+   * Generate a unique CSS selector for an element
+   * Uses CSS.escape() to handle special characters from Tailwind classes
+   */
   function generateSelector(element) {
-    if (!element || element === document.body) return 'body';
-    
+    if (!element || element === document.documentElement) {
+      return null;
+    }
+
     // Try ID first
     if (element.id) {
       return `#${CSS.escape(element.id)}`;
     }
 
-    // Build path using escaped classes
+    // Build path using tag + limited classes
     const path = [];
     let current = element;
-    
-    while (current && current !== document.body) {
+
+    while (current && current !== document.body && path.length < 10) {
       let selector = current.tagName.toLowerCase();
-      
-      // Add escaped classes (limit to first 2 for brevity)
+
+      // Add up to 2 classes (escaped)
       if (current.className && typeof current.className === 'string') {
         const classes = current.className.trim().split(/\s+/).filter(c => c);
         if (classes.length > 0) {
@@ -143,116 +43,298 @@ case 'VISUAL_EDIT_MODE_DEACTIVATE':
       }
 
       // Add nth-child for uniqueness
-      const parent = current.parentElement;
-      if (parent) {
-        const siblings = Array.from(parent.children);
+      if (current.parentElement) {
+        const siblings = Array.from(current.parentElement.children);
         const index = siblings.indexOf(current) + 1;
-        selector += `:nth-child(${index})`;
+        if (siblings.length > 1) {
+          selector += `:nth-child(${index})`;
+        }
       }
 
       path.unshift(selector);
-      current = parent;
+      current = current.parentElement;
     }
 
-    return path.join(' > ');
-  }
+    const fullSelector = path.join(' > ');
 
-  // Get element info
-  function getElementInfo(selector) {
+    // Validate selector before returning
     try {
-      const element = document.querySelector(selector);
-      if (!element) {
-        console.warn('Element not found:', selector);
-        return null;
-      }
-
-      const computedStyles = window.getComputedStyle(element);
-      const rect = element.getBoundingClientRect();
-
-      return {
-        selector,
-        tagName: element.tagName,
-        className: element.className,
-        textContent: element.textContent?.trim() || '',
-        computedStyles: {
-          color: computedStyles.color,
-          backgroundColor: computedStyles.backgroundColor,
-          fontSize: computedStyles.fontSize,
-          padding: computedStyles.padding,
-          margin: computedStyles.margin,
-          width: computedStyles.width,
-          height: computedStyles.height,
-        },
-        boundingRect: {
-          top: rect.top,
-          left: rect.left,
-          width: rect.width,
-          height: rect.height,
-        },
-        sourceFile: element.getAttribute('data-source-file'),
-        sourceLine: element.getAttribute('data-source-line'),
-      };
-    } catch (error) {
-      console.error('Error getting element info:', error);
+      document.querySelector(fullSelector);
+      return fullSelector;
+    } catch (e) {
+      console.error('[VisualEdit Bridge] Invalid selector generated:', fullSelector, e);
       return null;
     }
   }
 
-  // Listen for messages from parent
+  /**
+   * Create or get the highlight overlay element
+   */
+  function createHighlightOverlay() {
+    if (highlightOverlay) return highlightOverlay;
+    
+    highlightOverlay = document.createElement('div');
+    highlightOverlay.style.cssText = `
+      position: fixed;
+      pointer-events: none;
+      border: 2px solid #3b82f6;
+      background: rgba(59, 130, 246, 0.15);
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.1);
+      z-index: 2147483647;
+      transition: all 0.1s ease;
+      display: none;
+    `;
+    document.body.appendChild(highlightOverlay);
+    return highlightOverlay;
+  }
+
+  /**
+   * Update highlight overlay position based on element's current position
+   */
+  function updateHighlightPosition() {
+    if (!currentHighlightedElement || !highlightOverlay) return;
+    
+    const rect = currentHighlightedElement.getBoundingClientRect();
+    highlightOverlay.style.top = `${rect.top}px`;
+    highlightOverlay.style.left = `${rect.left}px`;
+    highlightOverlay.style.width = `${rect.width}px`;
+    highlightOverlay.style.height = `${rect.height}px`;
+    highlightOverlay.style.display = 'block';
+  }
+
+  /**
+   * Highlight an element by its selector
+   */
+  function highlightElement(selector) {
+    try {
+      const element = document.querySelector(selector);
+      if (!element) {
+        console.warn('[VisualEdit Bridge] Cannot highlight: element not found', selector);
+        return;
+      }
+
+      currentHighlightedElement = element;
+      const overlay = createHighlightOverlay();
+      
+      // Update position
+      updateHighlightPosition();
+      
+      // Setup scroll handler
+      if (!window._visualEditScrollHandler) {
+        let scrollTimeout;
+        window._visualEditScrollHandler = () => {
+          clearTimeout(scrollTimeout);
+          scrollTimeout = setTimeout(updateHighlightPosition, 10);
+        };
+        window.addEventListener('scroll', window._visualEditScrollHandler, true);
+      }
+      
+    } catch (error) {
+      console.error('[VisualEdit Bridge] Error highlighting element:', error);
+    }
+  }
+
+  /**
+   * Clear the highlight overlay
+   */
+  function clearHighlight() {
+    if (highlightOverlay) {
+      highlightOverlay.style.display = 'none';
+    }
+    
+    currentHighlightedElement = null;
+    
+    // Remove scroll handler
+    if (window._visualEditScrollHandler) {
+      window.removeEventListener('scroll', window._visualEditScrollHandler, true);
+      window._visualEditScrollHandler = null;
+    }
+  }
+
+  /**
+   * Get detailed information about an element
+   */
+  function getElementInfo(element) {
+    if (!element) return null;
+
+    const computedStyles = window.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+
+    return {
+      tagName: element.tagName,
+      className: element.className,
+      textContent: element.textContent?.substring(0, 100) || '',
+      computedStyles: {
+        color: computedStyles.color,
+        backgroundColor: computedStyles.backgroundColor,
+        fontSize: computedStyles.fontSize,
+        padding: computedStyles.padding,
+        margin: computedStyles.margin,
+        width: computedStyles.width,
+        height: computedStyles.height,
+      },
+      boundingRect: {
+        top: rect.top,
+        left: rect.left,
+        width: rect.width,
+        height: rect.height,
+      }
+    };
+  }
+
+  // ===== EVENT PREVENTION =====
+
+  /**
+   * Prevent default behavior when Visual Edit is active
+   */
+  function preventDefaultBehavior(event) {
+    if (isVisualEditActive) {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+    }
+  }
+
+  /**
+   * Activate Visual Edit Mode
+   */
+  function activateVisualEditMode() {
+    if (eventListenersAttached) return;
+    
+    isVisualEditActive = true;
+    
+    // Prevent all interactions
+    document.addEventListener('click', preventDefaultBehavior, true);
+    document.addEventListener('mousedown', preventDefaultBehavior, true);
+    document.addEventListener('mouseup', preventDefaultBehavior, true);
+    document.addEventListener('submit', preventDefaultBehavior, true);
+    document.addEventListener('dragstart', preventDefaultBehavior, true);
+    
+    // Change cursor
+    document.body.style.cursor = 'crosshair';
+    document.body.style.userSelect = 'none';
+    
+    eventListenersAttached = true;
+    console.log('🎨 Visual Edit Mode ACTIVATED - All interactions blocked');
+  }
+
+  /**
+   * Deactivate Visual Edit Mode
+   */
+  function deactivateVisualEditMode() {
+    if (!eventListenersAttached) return;
+    
+    isVisualEditActive = false;
+    
+    // Remove event listeners
+    document.removeEventListener('click', preventDefaultBehavior, true);
+    document.removeEventListener('mousedown', preventDefaultBehavior, true);
+    document.removeEventListener('mouseup', preventDefaultBehavior, true);
+    document.removeEventListener('submit', preventDefaultBehavior, true);
+    document.removeEventListener('dragstart', preventDefaultBehavior, true);
+    
+    // Restore cursor
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    
+    eventListenersAttached = false;
+    console.log('🎨 Visual Edit Mode DEACTIVATED - Interactions restored');
+  }
+
+  // ===== MESSAGE HANDLERS =====
+
+  /**
+   * Handle element detection at coordinates
+   */
+  function handleDetectElement(data) {
+    const { x, y, action } = data;
+    console.log('[VisualEdit Bridge] Detecting element at', x, y, 'action:', action);
+
+    const element = document.elementFromPoint(x, y);
+    
+    if (!element || element === document.documentElement || element === document.body) {
+      window.parent.postMessage({
+        type: 'NO_ELEMENT_DETECTED',
+        action
+      }, '*');
+      return;
+    }
+
+    const selector = generateSelector(element);
+    
+    if (!selector) {
+      window.parent.postMessage({
+        type: 'NO_ELEMENT_DETECTED',
+        action
+      }, '*');
+      return;
+    }
+
+    console.log('[VisualEdit Bridge] Generated selector:', selector);
+
+    if (action === 'hover') {
+      highlightElement(selector);
+      window.parent.postMessage({
+        type: 'ELEMENT_HOVERED',
+        selector
+      }, '*');
+    } else if (action === 'click') {
+      window.parent.postMessage({
+        type: 'ELEMENT_CLICKED',
+        selector
+      }, '*');
+    }
+  }
+
+  /**
+   * Handle element info request
+   */
+  function handleRequestInfo(data) {
+    const { selector } = data;
+    
+    try {
+      const element = document.querySelector(selector);
+      if (!element) {
+        console.warn('[VisualEdit Bridge] Element not found for info request:', selector);
+        return;
+      }
+
+      const info = getElementInfo(element);
+      
+      window.parent.postMessage({
+        type: 'ELEMENT_INFO',
+        selector,
+        ...info
+      }, '*');
+      
+    } catch (error) {
+      console.error('[VisualEdit Bridge] Error getting element info:', error);
+    }
+  }
+
+  // ===== MESSAGE LISTENER =====
+
   window.addEventListener('message', (event) => {
-    const { type, selector, x, y, action } = event.data;
+    const { type, ...data } = event.data;
 
     switch (type) {
+      case 'VISUAL_EDIT_MODE_ACTIVATE':
+        activateVisualEditMode();
+        break;
+
+      case 'VISUAL_EDIT_MODE_DEACTIVATE':
+        deactivateVisualEditMode();
+        clearHighlight();
+        break;
+
       case 'VISUAL_EDIT_DETECT_ELEMENT':
-        console.log('[VisualEdit Bridge] Detecting element at', x, y, 'action:', action);
-        try {
-          const element = document.elementFromPoint(x, y);
-          
-          if (!element || element === document.body || element === document.documentElement) {
-            window.parent.postMessage({
-              type: 'NO_ELEMENT_DETECTED',
-              action
-            }, '*');
-            return;
-          }
-
-          const generatedSelector = generateSelector(element);
-          console.log('[VisualEdit Bridge] Generated selector:', generatedSelector);
-
-          // Test if selector is valid
-          try {
-            document.querySelector(generatedSelector);
-          } catch (e) {
-            console.error('[VisualEdit Bridge] Generated invalid selector:', generatedSelector, e);
-            window.parent.postMessage({
-              type: 'NO_ELEMENT_DETECTED',
-              action
-            }, '*');
-            return;
-          }
-
-          if (action === 'hover') {
-            window.parent.postMessage({
-              type: 'ELEMENT_HOVERED',
-              selector: generatedSelector
-            }, '*');
-          } else if (action === 'click') {
-            window.parent.postMessage({
-              type: 'ELEMENT_CLICKED',
-              selector: generatedSelector
-            }, '*');
-          }
-        } catch (error) {
-          console.error('[VisualEdit Bridge] Error detecting element:', error);
-          window.parent.postMessage({
-            type: 'NO_ELEMENT_DETECTED',
-            action
-          }, '*');
-        }
+        handleDetectElement(data);
         break;
 
       case 'VISUAL_EDIT_HIGHLIGHT':
-        highlightElement(selector);
+        if (data.selector) {
+          highlightElement(data.selector);
+        }
         break;
 
       case 'VISUAL_EDIT_CLEAR_HIGHLIGHT':
@@ -260,14 +342,9 @@ case 'VISUAL_EDIT_MODE_DEACTIVATE':
         break;
 
       case 'VISUAL_EDIT_REQUEST_INFO':
-        const info = getElementInfo(selector);
-        if (info) {
-          window.parent.postMessage({
-            type: 'ELEMENT_INFO',
-            data: info,
-          }, '*');
-        }
+        handleRequestInfo(data);
         break;
     }
   });
+
 })();
